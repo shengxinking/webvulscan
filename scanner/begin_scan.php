@@ -41,60 +41,54 @@
 // without authorisation is unethical and against the law in many countries.
 //
 /////////////////////////////////////////////////////////////////////////////
-
+set_time_limit(0);
 error_reporting(E_ALL);
-require_once('functions/databaseFunctions.php');
+
+$currentDir = './';
 
 // Inculde the phpcrawl-mainclass
-require_once("../crawler/PHPCRAWL_071/classes/phpcrawler.class.php");
-require_once("../crawler/PHPCRAWL_071/classes/mycrawler.php");
+require_once($currentDir . "../crawler/PHPCrawl_071/classes/phpcrawler.class.php");
+require_once($currentDir . "../crawler/PHPCrawl_071/classes/mycrawler.php");
 
 //Include parsing class and http library
-require_once('classes/simplehtmldom/simple_html_dom.php');
-//require_once('HTTPclasses/HTTPclient/HTTPClient.class.php');
-require_once('classes/httpclient-2011-08-21/http.php');
+require_once($currentDir . 'classes/simplehtmldom/simple_html_dom.php');
+require_once($currentDir . 'classes/httpclient-2011-08-21/http.php');
 
 //Include Entity Classes
-require_once('classes/Form.php');
-require_once('classes/InputField.php');
-require_once('classes/Logger.php');
-require_once('classes/PostOrGetObject.php');
-require_once('classes/Vulnerability.php');
+require_once($currentDir . 'classes/Form.php');
+require_once($currentDir . 'classes/InputField.php');
+require_once($currentDir . 'classes/Logger.php');
+require_once($currentDir . 'classes/PostOrGetObject.php');
+require_once($currentDir . 'classes/Vulnerability.php');
 
 //Include Function Scripts
-require_once('functions/commonFunctions.php');
-require_once('functions/databaseFunctions.php');
-require_once('functions/createPdfReport.php');
-require_once('functions/emailPdfToUser.php');
+require_once($currentDir . 'functions/commonFunctions.php');
+require_once($currentDir . 'functions/databaseFunctions.php');
+require_once($currentDir . 'functions/createPdfReport.php');
+require_once($currentDir . 'functions/emailPdfToUser.php');
 
 //Include test scripts
-require_once('tests/testForReflectedXSS.php');
-require_once('tests/testForStoredXSS.php');
-require_once('tests/testForSQLi.php');
-require_once('tests/testDirectObjectRefs.php');
-require_once('tests/testAuthenticationSQLi.php');
-require_once('tests/testUnvalidatedRedirects.php');
-require_once('tests/testDirectoryListingEnabled.php');
-require_once('tests/testHttpBannerDisclosure.php');
-require_once('tests/testAutoComplete.php');
-require_once('tests/testSslCertificate.php');
+require_once($currentDir . 'tests/testForReflectedXSS.php');
+require_once($currentDir . 'tests/testForStoredXSS.php');
+require_once($currentDir . 'tests/testForSQLi.php');
+require_once($currentDir . 'tests/testDirectObjectRefs.php');
+require_once($currentDir . 'tests/testAuthenticationSQLi.php');
+require_once($currentDir . 'tests/testUnvalidatedRedirects.php');
+require_once($currentDir . 'tests/testDirectoryListingEnabled.php');
+require_once($currentDir . 'tests/testHttpBannerDisclosure.php');
+require_once($currentDir . 'tests/testAutoComplete.php');
+require_once($currentDir . 'tests/testSslCertificate.php');
 
 //Include PDF generator
-require_once('classes/tcpdf/config/lang/eng.php');
-require_once('classes/tcpdf/tcpdf.php');
-
-set_time_limit(0);
+require_once($currentDir . 'classes/tcpdf/config/lang/eng.php');
+require_once($currentDir . 'classes/tcpdf/tcpdf.php');
 
 $log = new Logger();
-$log->lfile('logs/eventlogs');
+$log->lfile($currentDir . 'logs/eventlogs');
 
 $log->lwrite('Connecting to database');
 
 $connectionFlag = connectToDb($db);
-
-$log->lwrite('Instantiating crawler');
-
-$crawler = &new MyCrawler();
 
 isset($_POST['specifiedUrl']) ? $urlToScan = $_POST['specifiedUrl'] : $urlToScan = '';
 isset($_POST['testId']) ? $testId = $_POST['testId'] : $testId = 0;
@@ -109,70 +103,43 @@ if(empty($urlToScan))
 	return;
 }
 
+if(stripos($urlToScan, 'http') !== 0)
+	$urlToScan = 'http://' . $urlToScan;
+
 $log->lwrite("URL to scan: $urlToScan");
 
 $query = "UPDATE tests SET status = 'Preparing Crawl for $urlToScan' WHERE id = $testId;"; 
 $db->query($query);
 
-$crawler->setURL($urlToScan);
-$crawler->setTestId($testId);
+//Check if crawling is enabled
+$crawlUrlFlag = false;
+if(stristr($testCases,' crawlurl ') !== false)
+	$crawlUrlFlag = true;
 
-$crawler->addReceiveContentType("/text\/html/");
-
-$crawler->addNonFollowMatch("/.(jpg|jpeg|gif|png|bmp|css|js)$/ i");
-
-$crawler->setCookieHandling(true);
-
-$crawler->setFirstCrawl(true);
-
-$crawler->setTestId($testId);
-
-//$crawler->setPageLimit(0,false);
-
-//$crawler->setAggressiveLinkExtraction(false);
-
-//$crawler->setFollowRedirects(false);
-//$crawler->setFollowRedirectsTillContent(false);
-
-//$crawler->setFollowMode(0);
-//$crawler->setFollowMode(1);
-//$crawler->setFollowMode(2);//default
-//$crawler->setFollowMode(3);//use this for testing localhost site, otherwise it starts testing xampp, phpmyadmin, etc.
-
-updateStatus($db, "Crawling $urlToScan...", $testId);
-$log->lwrite('Starting crawler');
-
-$crawler->go();
-
-//$array = $crawler->getReport();
-//$log->lwrite('links followed: ' . $array['links_followed']);//31
-/*$log->lwrite('links_found:');
-
-$crawler->handlePageData($array);
-$list = $array['links_found'];
-$log->lwrite('links_found');
-foreach($list as $item)
-	$log->lwrite($item);
-*/
-/*
-$log->lwrite("Creating results table for test with ID: $testId");
-$query = 'CREATE TABLE test' . $testId . '(type text, method text, url text, attackStr text)';
-$result = $db->query($query);
-if(!$result)
+if($crawlUrlFlag)
 {
-	$log->lwrite("Error creating table for test: $testId");
-	echo "Error creating table for test: $testId";
-	return;
+	$log->lwrite('Instantiating crawler');
+	$crawler = &new MyCrawler();
+	$crawler->setURL($urlToScan);
+	$crawler->setTestId($testId);
+	$crawler->addReceiveContentType("/text\/html/");
+	$crawler->addNonFollowMatch("/.(jpg|jpeg|gif|png|bmp|css|js)$/ i");
+	$crawler->setCookieHandling(true);
+	$crawler->setFirstCrawl(true);
+	$crawler->setTestId($testId);
+	//$crawler->setFollowMode(0);
+	//$crawler->setFollowMode(1);
+	//$crawler->setFollowMode(2);//default
+	//$crawler->setFollowMode(3);//use this for testing localhost site, otherwise it may start testing xampp, phpmyadmin, etc.
+
+	updateStatus($db, "Crawling $urlToScan...", $testId);
+	$log->lwrite('Starting crawler');
+
+	$crawler->go();
+	$urlsFound = $crawler->urlsFound;
 }
 else
-{
-	$log->lwrite("Successfully created table for test: $testId");
-}
-*/
-
-$urlsFound = $crawler->urlsFound;
-
-//unset($crawler);//free memory
+	$urlsFound = array($urlToScan);
 
 $logStr = sizeof($urlsFound) . ' URLs found for test: ' . $testId;
 
@@ -180,11 +147,16 @@ $log->lwrite("All URLs found excluding exceptions:");
 foreach($urlsFound as $currentUrl)
 	$log->lwrite($currentUrl);
 
+$siteBeingTested = getSiteBeingTested($urlToScan);
+
 if(stristr($testCases,' bannerdis ') !== false)
 {
 	//Test domain for HTTP Banner Disclouse
 	$log->lwrite("Beginning testing $urlToScan for HTTP Banner Disclosure");
-	testHttpBannerDisclosure($urlsFound[0], $testId); //The first URL in the array is always the full domain name e.g. http://www.abc.com
+	if(!$crawlUrlFlag)
+		testHttpBannerDisclosure($urlsFound[0], $testId); 
+	else
+		testHttpBannerDisclosure($siteBeingTested, $testId); 
 	$log->lwrite("Finished testing $urlToScan for HTTP Banner Disclosure for test: $testId");
 	updateStatus($db, "Finished testing $urlToScan for HTTP Banner Disclosure...", $testId);
 }
@@ -205,7 +177,7 @@ if(stristr($testCases,' dirlist ') !== false)
 {
 	//Test domain for Directory Listing enabled
 	$log->lwrite("Beginning testing $urlToScan for Directory Listing enabled");
-	testDirectoryListingEnabled($urlsFound[0], $testId); //The first URL in the array is always the full domain name e.g. http://www.abc.com
+	testDirectoryListingEnabled($urlsFound[0], $siteBeingTested, $testId, $crawlUrlFlag); //The first URL in the array is always the full domain name e.g. http://www.abc.com
 	$log->lwrite("Finished testing $urlToScan for Directory Listing enabled for test: $testId");
 	updateStatus($db, "Finished testing $urlToScan for Directory Listing enabled...", $testId);
 }
@@ -243,7 +215,7 @@ if(stristr($testCases,' rxss ') !== false)
 	$log->lwrite('Beginning Reflected XSS testing on each of the URLs');
 	for($i=0; $i<sizeof($urlsFound); $i++)
 	{
-		testForReflectedXSS($urlsFound[$i], $urlsFound[0], $testId);
+		testForReflectedXSS($urlsFound[$i], $siteBeingTested, $testId);
 	}
 	$log->lwrite('Finished Reflected XSS testing of all URLS for test: ' . $testId);
 	updateStatus($db, "Finished Reflected Cross-Site Scripting testing...", $testId);
@@ -255,7 +227,7 @@ if(stristr($testCases,' sqli ') !== false)
 	$log->lwrite('Beginning SQL Injection testing on each of the URLs');
 	for($i=0; $i<sizeof($urlsFound); $i++)
 	{
-		testForSQLi($urlsFound[$i], $urlsFound[0], $testId);
+		testForSQLi($urlsFound[$i], $siteBeingTested, $testId);
 	}
 	$log->lwrite('Finished SQL Injection testing of all URLS for test: ' . $testId);
 	updateStatus($db, "Finished SQL Injection testing...", $testId);
@@ -267,7 +239,7 @@ if(stristr($testCases,' basqli ') !== false)
 	$log->lwrite('Beginning testing each of the URLs for Broken Authentication using SQL Injection');
 	for($i=0; $i<sizeof($urlsFound); $i++)
 	{
-		testAuthenticationSQLi($urlsFound[$i], $urlsFound[0], $testId);
+		testAuthenticationSQLi($urlsFound[$i], $siteBeingTested, $testId);
 	}
 	$log->lwrite('Finished testing each of the URLs for Broken Authentication using SQL Injection for test: ' . $testId);
 	updateStatus($db, "Finished testing each of the URLs for Broken Authenticaton using SQL Injection...", $testId);
@@ -275,33 +247,10 @@ if(stristr($testCases,' basqli ') !== false)
 
 if(stristr($testCases,' sxss ') !== false)
 {
-	//Test all URLs for Stored Cross-Site Scripting
-	
-	/*$logDebug = new Logger();
-	$logDebug->lfile("debuglogs$testId");
-	$count = 0;*/
-
 	$log->lwrite('Beginning Stored XSS testing on each of the URLs');
 	for($i=0; $i<sizeof($urlsFound); $i++)
 	{
-		/*$sql = "select * from tests where id = $testId";
-		$res = $db->query($sql);
-		$row = $res->fetch_object();
-		$httpReqsBefore = $row->num_requests_sent;*/
-	
-		testForStoredXSS($urlsFound[$i], $urlsFound[0], $testId, $urlsFound);
-		
-		/*$sql = "select * from tests where id = $testId";
-		$res = $db->query($sql);
-		$row = $res->fetch_object();
-		$httpReqsAfter = $row->num_requests_sent;
-		$uri = $urlsFound[$i];
-		
-		$numSent = $httpReqsAfter - $httpReqsBefore;
-		$count += $numSent;
-		$logDebug->lwrite("$numSent requests sent testing $uri");
-		$logDebug->lwrite("Total so far is $count");*/
-		
+		testForStoredXSS($urlsFound[$i], $siteBeingTested, $testId, $urlsFound);		
 	}
 	$log->lwrite('Finished Stored XSS testing of all URLS for test: ' . $testId);
 	updateStatus($db, "Finished Stored Cross-Site Scripting testing...", $testId);
@@ -313,16 +262,22 @@ createPdfReport($testId, $fileName);
 $log->lwrite('Finished creating PDF report for test: ' . $testId);
 updateStatus($db, "Finished creating PDF report...", $testId);
 
-//Email PDF report
-$log->lwrite('Beginning emailing PDF report to $email for test: ' . $testId);
-emailPdfToUser($fileName, $username, $email, $testId);
-$log->lwrite('Finished emailing PDF report to $email for test: ' . $testId);
-updateStatus($db, "Finished emailing PDF report...", $testId);
+if(stristr($testCases,' emailpdf ') !== false)
+{
+	//Email PDF report
+	$log->lwrite('Beginning emailing PDF report to $email for test: ' . $testId);
+	emailPdfToUser($fileName, $username, $email, $testId);
+	$log->lwrite('Finished emailing PDF report to $email for test: ' . $testId);
+	updateStatus($db, "Finished emailing PDF report...", $testId);
+}
 
 $query = "UPDATE tests SET scan_finished = 1 WHERE id = $testId;"; 
 $result = $db->query($query);
 
-updateStatus($db, "Scan is complete! The report has been emailed to you and is also in your scan history.", $testId);
-
+if(stristr($testCases,' emailpdf ') !== false)
+	updateStatus($db, "Scan is complete! The report has been emailed to you and is also in your scan history.", $testId);
+else
+	updateStatus($db, "Scan is complete! The report is in your scan history.", $testId);
+	
 $db->close();
 ?>
